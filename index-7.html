@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2a1520">
+<title>Kritika</title>
+<style>
+  :root {
+    --bg: #2a1520;
+    --text: #fbeef2;
+    --muted: #c9a3b1;
+    --accent: #ff7a9c;
+    --accent-ink: #3a0d1c;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    padding: env(safe-area-inset-top, 0px) 20px calc(env(safe-area-inset-bottom, 0px) + 24px);
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 20px 0 0; }
+  main { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 14px; text-align: center; }
+  #heard { color: var(--muted); font-size: 16px; min-height: 24px; }
+  #reply { font-size: 22px; line-height: 1.4; }
+  button {
+    align-self: center;
+    width: 96px; height: 96px; border-radius: 50%;
+    border: 0; background: var(--accent); color: var(--accent-ink);
+    font-size: 36px; cursor: pointer;
+  }
+  button:focus-visible { outline: 3px solid var(--text); outline-offset: 4px; }
+  button.on { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { transform: scale(1.08); } }
+  @media (prefers-reduced-motion: reduce) { button.on { animation: none; } }
+  #note { color: var(--muted); font-size: 13px; text-align: center; margin-top: 12px; min-height: 18px; }
+</style>
+</head>
+<body>
+  <h1>Kritika</h1>
+  <main>
+    <div id="heard"></div>
+    <div id="reply">Mic dabao aur bolo.</div>
+  </main>
+  <button id="mic" aria-label="Bolna shuru karo">🎤</button>
+  <div id="note"></div>
+
+<script>
+  const mic = document.getElementById('mic');
+  const heard = document.getElementById('heard');
+  const reply = document.getElementById('reply');
+  const note = document.getElementById('note');
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    note.textContent = 'Is browser me awaaz nahi chalti. Chrome me kholo.';
+    mic.disabled = true;
+  }
+
+  // Step 2 me yahan AI (Supabase Edge Function) ka call aayega.
+  async function getReply(text) {
+    return 'Tumne kaha: ' + text + '. Khana khaya ki nahi?';
+  }
+
+  function speak(text) {
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'hi-IN';
+      speechSynthesis.speak(u);
+    } catch (e) {
+      note.textContent = 'Bolne me dikkat aayi.';
+    }
+  }
+
+  let rec = null;
+  let listening = false;
+
+  function start() {
+    rec = new SR();
+    rec.lang = 'hi-IN';
+    rec.interimResults = true;
+    rec.continuous = false;
+    let finalText = '';
+
+    rec.onstart = () => {
+      listening = true;
+      mic.classList.add('on');
+      mic.setAttribute('aria-label', 'Rukne ke liye dabao');
+      heard.textContent = '';
+      note.textContent = 'Sun rahi hu...';
+    };
+    rec.onresult = (e) => {
+      let t = '';
+      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+      finalText = t;
+      heard.textContent = t;
+    };
+    rec.onerror = (e) => {
+      note.textContent = e.error === 'not-allowed'
+        ? 'Mic ki permission do (browser settings me).'
+        : 'Dikkat: ' + e.error;
+    };
+    rec.onend = async () => {
+      listening = false;
+      mic.classList.remove('on');
+      mic.setAttribute('aria-label', 'Bolna shuru karo');
+      if (finalText.trim()) {
+        note.textContent = '';
+        const r = await getReply(finalText.trim());
+        reply.textContent = r;
+        speak(r);
+      } else if (!note.textContent.startsWith('Dikkat') && !note.textContent.startsWith('Mic ki')) {
+        note.textContent = 'Kuch sunai nahi diya, phir try karo.';
+      }
+    };
+    rec.start();
+  }
+
+  mic.addEventListener('click', () => {
+    if (listening) { rec.stop(); } else { start(); }
+  });
+</script>
+</body>
+</html>
